@@ -53,7 +53,6 @@ class MediaPlayerWrapper {
     private final Object mCallbackLock = new Object();
     private Callback mRegisteredCallback = null;
 
-
     protected MediaPlayerWrapper() {
         mCurrentData = new MediaData(null, null, null);
     }
@@ -122,16 +121,6 @@ class MediaPlayerWrapper {
     }
 
     Metadata getCurrentMetadata() {
-        // Try to use the now playing list if the information exists.
-        if (getActiveQueueID() != -1) {
-            for (Metadata data : getCurrentQueue()) {
-                if (data.mediaId.equals(Util.NOW_PLAYING_PREFIX + getActiveQueueID())) {
-                    d("getCurrentMetadata: Using playlist data: " + data.toString());
-                    return data.clone();
-                }
-            }
-        }
-
         return Util.toMetadata(getMetadata());
     }
 
@@ -240,7 +229,7 @@ class MediaPlayerWrapper {
                 getPlaybackState(),
                 Util.toMetadataList(getQueue()));
 
-        mControllerCallbacks = new MediaControllerListener(mLooper);
+        mControllerCallbacks = new MediaControllerListener(mMediaController, mLooper);
     }
 
     /**
@@ -260,14 +249,16 @@ class MediaPlayerWrapper {
     void updateMediaController(MediaController newController) {
         if (newController == mMediaController) return;
 
+        mMediaController = newController;
+
         synchronized (mCallbackLock) {
             if (mRegisteredCallback == null || mControllerCallbacks == null) {
+                d("Controller for " + mPackageName + " maybe is not activated.");
                 return;
             }
         }
 
         mControllerCallbacks.cleanup();
-        mMediaController = newController;
 
         // Update the current data since it could be different on the new controller for the player
         mCurrentData = new MediaData(
@@ -275,7 +266,7 @@ class MediaPlayerWrapper {
                 getPlaybackState(),
                 Util.toMetadataList(getQueue()));
 
-        mControllerCallbacks = new MediaControllerListener(mLooper);
+        mControllerCallbacks = new MediaControllerListener(mMediaController, mLooper);
         d("Controller for " + mPackageName + " was updated.");
     }
 
@@ -295,7 +286,7 @@ class MediaPlayerWrapper {
         synchronized (mCallbackLock) {
             if (mRegisteredCallback == null) {
                 Log.e(TAG, mPackageName
-                        + "Trying to send an update with no registered callback");
+                        + ": Trying to send an update with no registered callback");
                 return;
             }
 
@@ -340,20 +331,23 @@ class MediaPlayerWrapper {
     class MediaControllerListener extends MediaController.Callback {
         private final Object mTimeoutHandlerLock = new Object();
         private Handler mTimeoutHandler;
+        private MediaController mController;
 
-        MediaControllerListener(Looper newLooper) {
+        MediaControllerListener(MediaController controller, Looper newLooper) {
             synchronized (mTimeoutHandlerLock) {
                 mTimeoutHandler = new TimeoutHandler(newLooper);
 
+                mController = controller;
                 // Register the callbacks to execute on the same thread as the timeout thread. This
                 // prevents a race condition where a timeout happens at the same time as an update.
-                mMediaController.registerCallback(this, mTimeoutHandler);
+                mController.registerCallback(this, mTimeoutHandler);
             }
         }
 
         void cleanup() {
             synchronized (mTimeoutHandlerLock) {
-                mMediaController.unregisterCallback(this);
+                mController.unregisterCallback(this);
+                mController = null;
                 mTimeoutHandler.removeMessages(TimeoutHandler.MSG_TIMEOUT);
                 mTimeoutHandler = null;
             }
