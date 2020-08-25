@@ -20,6 +20,7 @@ import android.bluetooth.BluetoothProfile;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.res.Resources;
+import android.os.SystemProperties;
 import android.provider.Settings;
 import android.util.FeatureFlagUtils;
 import android.util.Log;
@@ -115,6 +116,8 @@ public class Config {
             return;
         }
 
+        boolean isA2dpSinkEnabled = SystemProperties.getBoolean("ro.service.bt.a2dp_sink",
+            false);
         ArrayList<Class> profiles = new ArrayList<>(PROFILE_SERVICES_AND_FLAGS.length);
         for (ProfileConfig config : PROFILE_SERVICES_AND_FLAGS) {
             boolean supported = resources.getBoolean(config.mSupported);
@@ -124,6 +127,12 @@ public class Config {
                 Log.v(TAG, "Feature Flag enables support for HearingAidService");
                 supported = true;
             }
+
+            if (config.mClass == A2dpSinkService.class)
+                supported = isA2dpSinkEnabled;
+
+            if (config.mClass == A2dpService.class)
+                supported = !isA2dpSinkEnabled;
 
             if (supported && !isProfileDisabled(ctx, config.mMask)) {
                 Log.v(TAG, "Adding " + config.mClass.getSimpleName());
